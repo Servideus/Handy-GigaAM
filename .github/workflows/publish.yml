@@ -125,8 +125,16 @@ jobs:
         if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev patchelf libgtk-3-dev libasound2-dev libopenblas-dev libx11-dev libxtst-dev libxrandr-dev libgtk-layer-shell-dev libvulkan-dev mesa-vulkan-drivers glslc
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev patchelf libgtk-3-dev libasound2-dev libopenblas-dev libx11-dev libxtst-dev libxrandr-dev libgtk-layer-shell-dev libvulkan-dev mesa-vulkan-drivers
           sudo apt-get install -y libappindicator3-dev || sudo apt-get install -y libayatana-appindicator3-dev
+
+      - name: Prepare Vulkan SDK (ubuntu)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-1.3.290-jammy.list https://packages.lunarg.com/vulkan/1.3.290/lunarg-vulkan-1.3.290-jammy.list
+          sudo apt-get update
+          sudo apt-get install -y vulkan-sdk mesa-vulkan-drivers
 
       - name: Install frontend dependencies
         run: ${{ steps.pm.outputs.install_cmd }}
