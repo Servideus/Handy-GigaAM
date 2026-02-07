@@ -610,3 +610,100 @@ fn mel_to_hz_htk(mel: f32) -> f32 {
 fn quantize_to_bf16(value: f32) -> f32 {
     f32::from_bits(value.to_bits() & 0xFFFF_0000)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vocab_loader_parses_blank_and_word_boundary_tokens() -> Result<()> {
+        let vocab_content = "<unk> 0\n\u{2581}hello 1\nworld 2\n<blk> 3\n";
+        let (vocab, blank_idx) = parse_vocab_content(vocab_content)?;
+
+        assert_eq!(blank_idx, 3);
+        assert_eq!(vocab[1], " hello");
+        assert_eq!(vocab[2], "world");
+        Ok(())
+    }
+
+    #[test]
+    fn ctc_decoder_collapses_repeats_and_removes_blank() -> Result<()> {
+        let logits = Array3::from_shape_vec(
+            (1, 6, 4),
+            vec![
+                0.0, 5.0, 1.0, -1.0, // token 1
+                0.0, 4.0, 1.0, -1.0, // repeated token 1 (collapsed)
+                0.0, 1.0, 0.0, 3.0, // blank
+                0.0, 6.0, 0.0, -1.0, // token 1 again (kept because blank separated)
+                0.0, 1.0, 5.0, -1.0, // token 2
+                0.0, 1.0, 4.0, -1.0, // repeated token 2 (collapsed)
+            ],
+        )?;
+
+        let token_ids = ctc_greedy_decode_ids(logits.view(), 6, 3);
+        assert_eq!(token_ids, vec![1, 1, 2]);
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "Requires local model files and a WAV fixture; set GIGAAM_TEST_MODEL_DIR and GIGAAM_TEST_WAV_PATH"]
+    fn integration_transcribes_wav_fixture() -> Result<()> {
+        let model_dir = std::env::var("GIGAAM_TEST_MODEL_DIR")
+            .context("GIGAAM_TEST_MODEL_DIR is required for integration test")?;
+        let wav_path = std::env::var("GIGAAM_TEST_WAV_PATH")
+            .context("GIGAAM_TEST_WAV_PATH is required for integration test")?;
+        let expected_substring = std::env::var("GIGAAM_TEST_EXPECT_CONTAINS").unwrap_or_default();
+
+        let mut engine = GigaamEngine::new();
+        engine.load_model(Path::new(&model_dir))?;
+
+        let samples = read_wav_mono_f32(Path::new(&wav_path))?;
+        let text = engine.transcribe_samples(samples)?;
+        assert!(
+            !text.trim().is_empty(),
+            "Expected non-empty transcription result"
+        );
+        if !expected_substring.is_empty() {
+            assert!(
+                text.contains(&expected_substring),
+                "Expected transcription to contain '{}', got '{}'",
+                expected_substring,
+                text
+            );
+        }
+        Ok(())
+    }
+
+    fn read_wav_mono_f32(path: &Path) -> Result<Vec<f32>> {
+        let mut reader = hound::WavReader::open(path)
+            .with_context(|| format!("Failed to open WAV fixture: {}", path.display()))?;
+        let spec = reader.spec();
+        let channels = usize::from(spec.channels.max(1));
+
+        let mut interleaved = Vec::<f32>::new();
+        match spec.sample_format {
+            hound::SampleFormat::Float => {
+                for sample in reader.samples::<f32>() {
+                    interleaved.push(sample?);
+                }
+            }
+            hound::SampleFormat::Int => {
+                let max_amplitude = (1_i64 << (spec.bits_per_sample.saturating_sub(1))) as f32;
+                for sample in reader.samples::<i32>() {
+                    interleaved.push(sample? as f32 / max_amplitude);
+                }
+            }
+        }
+
+        if channels == 1 {
+            return Ok(interleaved);
+        }
+
+        let mut mono = Vec::with_capacity(interleaved.len() / channels);
+        for frame in interleaved.chunks(channels) {
+            let sum: f32 = frame.iter().copied().sum();
+            mono.push(sum / channels as f32);
+        }
+        Ok(mono)
+    }
+}

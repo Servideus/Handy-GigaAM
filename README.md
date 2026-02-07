@@ -21,7 +21,7 @@ Handy isn't trying to be the best speech-to-text app—it's trying to be the mos
 
 1. **Press** a configurable keyboard shortcut to start/stop recording (or use push-to-talk mode)
 2. **Speak** your words while the shortcut is active
-3. **Release** and Handy processes your speech using Whisper
+3. **Release** and Handy processes your speech using your selected model
 4. **Get** your transcribed text pasted directly into whatever app you're using
 
 The process is entirely local:
@@ -30,6 +30,7 @@ The process is entirely local:
 - Transcription uses your choice of models:
   - **Whisper models** (Small/Medium/Turbo/Large) with GPU acceleration when available
   - **Parakeet V3** - CPU-optimized model with excellent performance and automatic language detection
+  - **GigaAM v3 e2e-CTC (int8)** - CPU-only Russian model with punctuation and normalization, fully offline after download
 - Works on Windows, macOS, and Linux
 
 ## Quick Start
@@ -55,7 +56,8 @@ Handy is built as a Tauri application combining:
 - **Backend**: Rust for system integration, audio processing, and ML inference
 - **Core Libraries**:
   - `whisper-rs`: Local speech recognition with Whisper models
-  - `transcription-rs`: CPU-optimized speech recognition with Parakeet models
+  - `transcribe-rs`: CPU-optimized speech recognition with Parakeet and Moonshine models
+  - `ort`: ONNX Runtime inference for ONNX-backed models (including GigaAM)
   - `cpal`: Cross-platform audio I/O
   - `vad-rs`: Voice Activity Detection
   - `rdev`: Global keyboard shortcuts and system events
@@ -139,6 +141,12 @@ The following are recommendations for running Handy on your own machine. If you 
 - **Performance**: ~5x real-time speed on mid-range hardware (tested on i5)
 - **Automatic language detection** - no manual language selection required
 
+**For GigaAM v3 e2e-CTC Model:**
+
+- **CPU-only operation** - no GPU required
+- **Russian-focused output** with punctuation and normalization
+- **Model size**: ~215 MB total download (`v3_e2e_ctc.int8.onnx` + vocab + yaml)
+
 ## Roadmap & Active Development
 
 We're actively working on several features and improvements. Contributions and feedback are welcome!
@@ -217,6 +225,12 @@ Download the models you want from below
 - V2 (473 MB): `https://blob.handy.computer/parakeet-v2-int8.tar.gz`
 - V3 (478 MB): `https://blob.handy.computer/parakeet-v3-int8.tar.gz`
 
+**GigaAM v3 e2e-CTC (three files in one directory):**
+
+- ONNX (225 MB): `https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main/v3_e2e_ctc.int8.onnx`
+- Vocab: `https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main/v3_e2e_ctc_vocab.txt`
+- Config: `https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main/v3_e2e_ctc.yaml`
+
 #### Step 4: Install Models
 
 **For Whisper Models (.bin files):**
@@ -225,10 +239,10 @@ Simply place the `.bin` file directly into the `models` directory:
 
 ```
 {app_data_dir}/models/
-├── ggml-small.bin
-├── whisper-medium-q4_1.bin
-├── ggml-large-v3-turbo.bin
-└── ggml-large-v3-q5_0.bin
+|-- ggml-small.bin
+|-- whisper-medium-q4_1.bin
+|-- ggml-large-v3-turbo.bin
+`-- ggml-large-v3-q5_0.bin
 ```
 
 **For Parakeet Models (.tar.gz archives):**
@@ -243,24 +257,45 @@ Final structure should look like:
 
 ```
 {app_data_dir}/models/
-├── parakeet-tdt-0.6b-v2-int8/     (directory with model files inside)
-│   ├── (model files)
-│   └── (config files)
-└── parakeet-tdt-0.6b-v3-int8/     (directory with model files inside)
-    ├── (model files)
-    └── (config files)
+|-- parakeet-tdt-0.6b-v2-int8/     (directory with model files inside)
+|   |-- (model files)
+|   `-- (config files)
+`-- parakeet-tdt-0.6b-v3-int8/     (directory with model files inside)
+    |-- (model files)
+    `-- (config files)
+```
+
+**For GigaAM v3 e2e-CTC (directory with exact filenames):**
+
+1. Create this directory inside `models`: `gigaam-v3-e2e-ctc-int8`
+2. Place the three files inside it:
+   - `v3_e2e_ctc.int8.onnx`
+   - `v3_e2e_ctc_vocab.txt`
+   - `v3_e2e_ctc.yaml`
+
+Final structure should include:
+
+```
+{app_data_dir}/models/
+|-- gigaam-v3-e2e-ctc-int8/
+|   |-- v3_e2e_ctc.int8.onnx
+|   |-- v3_e2e_ctc_vocab.txt
+|   `-- v3_e2e_ctc.yaml
+|-- parakeet-tdt-0.6b-v2-int8/
+`-- parakeet-tdt-0.6b-v3-int8/
 ```
 
 **Important Notes:**
 
 - For Parakeet models, the extracted directory name **must** match exactly as shown above
-- Do not rename the `.bin` files for Whisper models—use the exact filenames from the download URLs
+- For GigaAM, the directory name and all three filenames **must** match exactly as shown above
+- Do not rename the `.bin` files for Whisper models; use the exact filenames from the download URLs
 - After placing the files, restart Handy to detect the new models
 
 #### Step 5: Verify Installation
 
 1. Restart Handy
-2. Open Settings → Models
+2. Open Settings -> Models
 3. Your manually installed models should now appear as "Downloaded"
 4. Select the model you want to use and test transcription
 
