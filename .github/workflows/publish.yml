@@ -100,19 +100,44 @@ jobs:
           workspaces: "./src-tauri -> target"
           key: ${{ matrix.os }}-${{ matrix.target }}
 
+      - name: Configure libclang path (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          if (Test-Path "C:\Program Files\LLVM\bin\libclang.dll") {
+            "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+
+      - name: Install Vulkan SDK (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: humbletim/install-vulkan-sdk@v1.2
+        with:
+          version: 1.4.309.0
+          cache: true
+
       - name: Install dependencies (ubuntu)
         if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev libopenblas-dev libx11-dev libxtst-dev libxrandr-dev libgtk-layer-shell-dev libvulkan-dev mesa-vulkan-drivers
 
       - name: Install frontend dependencies
         run: ${{ steps.pm.outputs.install_cmd }}
+
+      - name: Disable updater artifacts when signing key is missing
+        if: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY == '' }}
+        shell: bash
+        run: |
+          node -e "const fs=require('fs');const p='src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));if(j.bundle?.createUpdaterArtifacts){j.bundle.createUpdaterArtifacts=false;fs.writeFileSync(p,JSON.stringify(j,null,2)+'\\n');console.log('Disabled createUpdaterArtifacts for CI release build.');}"
 
       - name: Build and publish installers
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          WHISPER_NO_AVX: ${{ matrix.os == 'ubuntu-22.04' && 'ON' || '' }}
+          WHISPER_NO_AVX2: ${{ matrix.os == 'ubuntu-22.04' && 'ON' || '' }}
         with:
           tagName: app-v__VERSION__
           releaseName: Handy v__VERSION__
