@@ -69,6 +69,8 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 tar = "0.4.44"
 flate2 = "1.0"
 sha2 = "0.10"
+ndarray = "0.16.1"
+ort = { version = "2.0.0-rc.10", features = ["ndarray"] }
 transcribe-rs = { version = "0.2.2", features = ["whisper", "parakeet", "moonshine"] }
 handy-keys = "0.1.4"
 ferrous-opencc = "0.2.3"

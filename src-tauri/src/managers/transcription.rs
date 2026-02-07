@@ -1,4 +1,5 @@
 use crate::audio_toolkit::{apply_custom_words, filter_transcription_output};
+use crate::managers::gigaam::GigaamEngine;
 use crate::managers::model::{EngineType, ModelManager};
 use crate::settings::{get_settings, ModelUnloadTimeout};
 use anyhow::Result;
@@ -32,6 +33,7 @@ enum LoadedEngine {
     Whisper(WhisperEngine),
     Parakeet(ParakeetEngine),
     Moonshine(MoonshineEngine),
+    Gigaam(GigaamEngine),
 }
 
 #[derive(Clone)]
@@ -145,6 +147,7 @@ impl TranscriptionManager {
                     LoadedEngine::Whisper(ref mut e) => e.unload_model(),
                     LoadedEngine::Parakeet(ref mut e) => e.unload_model(),
                     LoadedEngine::Moonshine(ref mut e) => e.unload_model(),
+                    LoadedEngine::Gigaam(ref mut e) => e.unload_model(),
                 }
             }
             *engine = None; // Drop the engine to free memory
@@ -285,17 +288,21 @@ impl TranscriptionManager {
                 LoadedEngine::Moonshine(engine)
             }
             EngineType::Gigaam => {
-                let error_msg = "GigaAM engine is not initialized in this build".to_string();
-                let _ = self.app_handle.emit(
-                    "model-state-changed",
-                    ModelStateEvent {
-                        event_type: "loading_failed".to_string(),
-                        model_id: Some(model_id.to_string()),
-                        model_name: Some(model_info.name.clone()),
-                        error: Some(error_msg.clone()),
-                    },
-                );
-                return Err(anyhow::anyhow!(error_msg));
+                let mut engine = GigaamEngine::new();
+                engine.load_model(&model_path).map_err(|e| {
+                    let error_msg = format!("Failed to load GigaAM model {}: {}", model_id, e);
+                    let _ = self.app_handle.emit(
+                        "model-state-changed",
+                        ModelStateEvent {
+                            event_type: "loading_failed".to_string(),
+                            model_id: Some(model_id.to_string()),
+                            model_name: Some(model_info.name.clone()),
+                            error: Some(error_msg.clone()),
+                        },
+                    );
+                    anyhow::anyhow!(error_msg)
+                })?;
+                LoadedEngine::Gigaam(engine)
             }
         };
 
@@ -392,7 +399,7 @@ impl TranscriptionManager {
         let settings = get_settings(&self.app_handle);
 
         // Perform transcription with the appropriate engine
-        let result = {
+        let raw_text = {
             let mut engine_guard = self.engine.lock().unwrap();
             let engine = engine_guard.as_mut().ok_or_else(|| {
                 anyhow::anyhow!(
@@ -426,6 +433,7 @@ impl TranscriptionManager {
                     whisper_engine
                         .transcribe_samples(audio, Some(params))
                         .map_err(|e| anyhow::anyhow!("Whisper transcription failed: {}", e))?
+                        .text
                 }
                 LoadedEngine::Parakeet(parakeet_engine) => {
                     let params = ParakeetInferenceParams {
@@ -435,22 +443,27 @@ impl TranscriptionManager {
                     parakeet_engine
                         .transcribe_samples(audio, Some(params))
                         .map_err(|e| anyhow::anyhow!("Parakeet transcription failed: {}", e))?
+                        .text
                 }
                 LoadedEngine::Moonshine(moonshine_engine) => moonshine_engine
                     .transcribe_samples(audio, None)
-                    .map_err(|e| anyhow::anyhow!("Moonshine transcription failed: {}", e))?,
+                    .map_err(|e| anyhow::anyhow!("Moonshine transcription failed: {}", e))?
+                    .text,
+                LoadedEngine::Gigaam(gigaam_engine) => gigaam_engine
+                    .transcribe_samples(audio)
+                    .map_err(|e| anyhow::anyhow!("GigaAM transcription failed: {}", e))?,
             }
         };
 
         // Apply word correction if custom words are configured
         let corrected_result = if !settings.custom_words.is_empty() {
             apply_custom_words(
-                &result.text,
+                &raw_text,
                 &settings.custom_words,
                 settings.word_correction_threshold,
             )
         } else {
-            result.text
+            raw_text
         };
 
         // Filter out filler words and hallucinations
