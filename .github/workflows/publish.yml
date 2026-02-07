@@ -125,10 +125,15 @@ jobs:
         run: ${{ steps.pm.outputs.install_cmd }}
 
       - name: Disable updater artifacts when signing key is missing
-        if: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY == '' }}
         shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          node -e "const fs=require('fs');const p='src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));if(j.bundle?.createUpdaterArtifacts){j.bundle.createUpdaterArtifacts=false;fs.writeFileSync(p,JSON.stringify(j,null,2)+'\\n');console.log('Disabled createUpdaterArtifacts for CI release build.');}"
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            node -e "const fs=require('fs');const p='src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));if(j.bundle?.createUpdaterArtifacts){j.bundle.createUpdaterArtifacts=false;fs.writeFileSync(p,JSON.stringify(j,null,2)+'\\n');console.log('Disabled createUpdaterArtifacts for CI release build.');}"
+          else
+            echo "TAURI_SIGNING_PRIVATE_KEY is set; keeping createUpdaterArtifacts enabled."
+          fi
 
       - name: Build and publish installers
         uses: tauri-apps/tauri-action@v0
