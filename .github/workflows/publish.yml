@@ -1,0 +1,121 @@
+name: Publish
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - release
+
+permissions:
+  contents: write
+
+jobs:
+  publish-tauri:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: ""
+            args: ""
+          - os: ubuntu-22.04
+            target: ""
+            args: ""
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Detect package manager
+        id: pm
+        shell: bash
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            echo "manager=pnpm" >> "$GITHUB_OUTPUT"
+            echo "lockfile=pnpm-lock.yaml" >> "$GITHUB_OUTPUT"
+            echo "install_cmd=pnpm install --frozen-lockfile" >> "$GITHUB_OUTPUT"
+            echo "cache=pnpm" >> "$GITHUB_OUTPUT"
+          elif [ -f yarn.lock ]; then
+            echo "manager=yarn" >> "$GITHUB_OUTPUT"
+            echo "lockfile=yarn.lock" >> "$GITHUB_OUTPUT"
+            echo "install_cmd=yarn install --frozen-lockfile" >> "$GITHUB_OUTPUT"
+            echo "cache=yarn" >> "$GITHUB_OUTPUT"
+          elif [ -f package-lock.json ]; then
+            echo "manager=npm" >> "$GITHUB_OUTPUT"
+            echo "lockfile=package-lock.json" >> "$GITHUB_OUTPUT"
+            echo "install_cmd=npm ci" >> "$GITHUB_OUTPUT"
+            echo "cache=npm" >> "$GITHUB_OUTPUT"
+          elif [ -f bun.lockb ] || [ -f bun.lock ]; then
+            echo "manager=bun" >> "$GITHUB_OUTPUT"
+            if [ -f bun.lockb ]; then
+              echo "lockfile=bun.lockb" >> "$GITHUB_OUTPUT"
+            else
+              echo "lockfile=bun.lock" >> "$GITHUB_OUTPUT"
+            fi
+            echo "install_cmd=bun install --frozen-lockfile" >> "$GITHUB_OUTPUT"
+          else
+            echo "No supported lockfile found (pnpm-lock.yaml, yarn.lock, package-lock.json, bun.lock/bun.lockb)." >&2
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        if: steps.pm.outputs.manager != 'bun'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: ${{ steps.pm.outputs.cache }}
+          cache-dependency-path: ${{ steps.pm.outputs.lockfile }}
+
+      - name: Setup Node.js (bun projects)
+        if: steps.pm.outputs.manager == 'bun'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Enable Corepack
+        if: steps.pm.outputs.manager == 'pnpm' || steps.pm.outputs.manager == 'yarn'
+        run: corepack enable
+
+      - name: Setup Bun
+        if: steps.pm.outputs.manager == 'bun'
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add Rust target (macOS)
+        if: matrix.target != ''
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          key: ${{ matrix.os }}-${{ matrix.target }}
+
+      - name: Install dependencies (ubuntu)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install frontend dependencies
+        run: ${{ steps.pm.outputs.install_cmd }}
+
+      - name: Build and publish installers
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: app-v__VERSION__
+          releaseName: Handy v__VERSION__
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
