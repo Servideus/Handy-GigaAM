@@ -171,7 +171,12 @@ export const useModelStore = create<ModelStore>()(
     },
 
     downloadModel: async (modelId) => {
-      const { addDownloadingModel, removeDownloadingModel } = get();
+      const {
+        addDownloadingModel,
+        removeDownloadingModel,
+        removeDownloadProgress,
+        loadModels,
+      } = get();
       try {
         set({ error: null });
         addDownloadingModel(modelId);
@@ -181,11 +186,15 @@ export const useModelStore = create<ModelStore>()(
         } else {
           set({ error: `Failed to download model: ${result.error}` });
           removeDownloadingModel(modelId);
+          removeDownloadProgress(modelId);
+          await loadModels();
           return false;
         }
       } catch (err) {
         set({ error: `Failed to download model: ${err}` });
         removeDownloadingModel(modelId);
+        removeDownloadProgress(modelId);
+        await loadModels();
         return false;
       }
     },

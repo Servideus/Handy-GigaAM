@@ -30,7 +30,7 @@ const GIGAAM_ARTIFACTS: [ArtifactSpec; 3] = [
     ArtifactSpec {
         filename: "v3_e2e_ctc.int8.onnx",
         url: "https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main/v3_e2e_ctc.int8.onnx",
-        sha256: "83ca1518d7ecbcf11b6402f4f7f7fc6918bf017152de6ec761cc85f0057f5f95",
+        sha256: "2e3fcb7a7b66030336fd10c2fcfb033bd1dc7e1bf238fe5cfd83b1d0cfc9d28e",
         size_bytes: 224_893_347,
     },
     ArtifactSpec {

@@ -315,12 +315,34 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
       setModelError(null);
       const result = await commands.downloadModel(modelId);
       if (result.status === "error") {
+        setModelDownloadProgress(
+          produce((progress) => {
+            delete progress[modelId];
+          }),
+        );
+        setDownloadStats(
+          produce((stats) => {
+            delete stats[modelId];
+          }),
+        );
+        await loadModels();
         const errorMsg = result.error;
         setModelError(errorMsg);
         setModelStatus("error");
         onError?.(errorMsg);
       }
     } catch (err) {
+      setModelDownloadProgress(
+        produce((progress) => {
+          delete progress[modelId];
+        }),
+      );
+      setDownloadStats(
+        produce((stats) => {
+          delete stats[modelId];
+        }),
+      );
+      await loadModels();
       const errorMsg = `${err}`;
       setModelError(errorMsg);
       setModelStatus("error");
