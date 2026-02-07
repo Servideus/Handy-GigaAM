@@ -51,6 +51,10 @@
       "moonshine-base": {
         "name": "Moonshine Base",
         "description": "Very fast, English only. Handles accents well."
+      },
+      "gigaam-v3-e2e-ctc-int8": {
+        "name": "GigaAM v3 e2e-CTC",
+        "description": "Русский. Пунктуация и нормализация. CPU."
       }
     },
     "errors": {
