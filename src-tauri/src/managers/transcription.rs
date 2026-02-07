@@ -284,6 +284,19 @@ impl TranscriptionManager {
                     })?;
                 LoadedEngine::Moonshine(engine)
             }
+            EngineType::Gigaam => {
+                let error_msg = "GigaAM engine is not initialized in this build".to_string();
+                let _ = self.app_handle.emit(
+                    "model-state-changed",
+                    ModelStateEvent {
+                        event_type: "loading_failed".to_string(),
+                        model_id: Some(model_id.to_string()),
+                        model_name: Some(model_info.name.clone()),
+                        error: Some(error_msg.clone()),
+                    },
+                );
+                return Err(anyhow::anyhow!(error_msg));
+            }
         };
 
         // Update the current engine and model ID

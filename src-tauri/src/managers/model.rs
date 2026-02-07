@@ -4,21 +4,57 @@ use flate2::read::GzDecoder;
 use futures_util::StreamExt;
 use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use specta::Type;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tar::Archive;
 use tauri::{AppHandle, Emitter, Manager};
+
+const GIGAAM_MODEL_ID: &str = "gigaam-v3-e2e-ctc-int8";
+const GIGAAM_MODEL_DIR: &str = "gigaam-v3-e2e-ctc-int8";
+
+#[derive(Clone, Copy)]
+struct ArtifactSpec {
+    filename: &'static str,
+    url: &'static str,
+    sha256: &'static str,
+    size_bytes: u64,
+}
+
+const GIGAAM_ARTIFACTS: [ArtifactSpec; 3] = [
+    ArtifactSpec {
+        filename: "v3_e2e_ctc.int8.onnx",
+        url: "https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main/v3_e2e_ctc.int8.onnx",
+        sha256: "83ca1518d7ecbcf11b6402f4f7f7fc6918bf017152de6ec761cc85f0057f5f95",
+        size_bytes: 224_893_347,
+    },
+    ArtifactSpec {
+        filename: "v3_e2e_ctc_vocab.txt",
+        url: "https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main/v3_e2e_ctc_vocab.txt",
+        sha256: "142de7570b3de5b3035ce111a89c228e80e6085273731d944093ddf24fa539cd",
+        size_bytes: 2_007,
+    },
+    ArtifactSpec {
+        filename: "v3_e2e_ctc.yaml",
+        url: "https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main/v3_e2e_ctc.yaml",
+        sha256: "e67eca3a311ad7c8813d36dff6b8eeba7ad3459fd811d6faea2a26535754a358",
+        size_bytes: 899,
+    },
+];
+
+const GIGAAM_TOTAL_SIZE_BYTES: u64 = 224_893_347 + 2_007 + 899;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub enum EngineType {
     Whisper,
     Parakeet,
     Moonshine,
+    Gigaam,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -203,6 +239,25 @@ impl ModelManager {
             },
         );
 
+        available_models.insert(
+            GIGAAM_MODEL_ID.to_string(),
+            ModelInfo {
+                id: GIGAAM_MODEL_ID.to_string(),
+                name: "GigaAM v3 e2e-CTC".to_string(),
+                description: "Русский. Пунктуация и нормализация. CPU.".to_string(),
+                filename: GIGAAM_MODEL_DIR.to_string(),
+                url: None,
+                size_mb: (GIGAAM_TOTAL_SIZE_BYTES + (1024 * 1024) - 1) / (1024 * 1024),
+                is_downloaded: false,
+                is_downloading: false,
+                partial_size: 0,
+                is_directory: true,
+                engine_type: EngineType::Gigaam,
+                accuracy_score: 0.90,
+                speed_score: 0.55,
+            },
+        );
+
         let manager = Self {
             app_handle: app_handle.clone(),
             models_dir,
@@ -229,6 +284,249 @@ impl ModelManager {
     pub fn get_model_info(&self, model_id: &str) -> Option<ModelInfo> {
         let models = self.available_models.lock().unwrap();
         models.get(model_id).cloned()
+    }
+
+    fn model_artifacts(model_id: &str) -> Option<&'static [ArtifactSpec]> {
+        if model_id == GIGAAM_MODEL_ID {
+            Some(&GIGAAM_ARTIFACTS)
+        } else {
+            None
+        }
+    }
+
+    fn verify_file_sha256(path: &PathBuf, expected_sha256: &str) -> Result<()> {
+        let mut file = File::open(path)?;
+        let mut hasher = Sha256::new();
+        let mut buf = [0_u8; 1024 * 1024];
+        loop {
+            let read = file.read(&mut buf)?;
+            if read == 0 {
+                break;
+            }
+            hasher.update(&buf[..read]);
+        }
+
+        let actual_sha256 = format!("{:x}", hasher.finalize());
+        if actual_sha256 != expected_sha256 {
+            return Err(anyhow::anyhow!(
+                "Checksum mismatch for {}: expected {}, got {}",
+                path.display(),
+                expected_sha256,
+                actual_sha256
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn emit_download_progress(&self, model_id: &str, downloaded: u64, total: u64) {
+        let percentage = if total > 0 {
+            (downloaded as f64 / total as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        let progress = DownloadProgress {
+            model_id: model_id.to_string(),
+            downloaded,
+            total,
+            percentage,
+        };
+
+        let _ = self.app_handle.emit("model-download-progress", &progress);
+    }
+
+    async fn download_artifact(
+        &self,
+        model_id: &str,
+        artifact: ArtifactSpec,
+        final_path: &PathBuf,
+        partial_path: &PathBuf,
+        downloaded_before_artifact: u64,
+        total_download_size: u64,
+    ) -> Result<()> {
+        if final_path.exists() {
+            match Self::verify_file_sha256(final_path, artifact.sha256) {
+                Ok(()) => {
+                    self.emit_download_progress(
+                        model_id,
+                        downloaded_before_artifact + artifact.size_bytes,
+                        total_download_size,
+                    );
+                    return Ok(());
+                }
+                Err(err) => {
+                    warn!(
+                        "Removing stale artifact with invalid checksum {}: {}",
+                        final_path.display(),
+                        err
+                    );
+                    fs::remove_file(final_path)?;
+                }
+            }
+        }
+
+        let mut resume_from = if partial_path.exists() {
+            let size = partial_path.metadata()?.len();
+            if size > artifact.size_bytes {
+                warn!(
+                    "Partial file larger than expected for {}, restarting download",
+                    artifact.filename
+                );
+                fs::remove_file(partial_path)?;
+                0
+            } else {
+                info!(
+                    "Resuming artifact {} for {} from byte {}",
+                    artifact.filename, model_id, size
+                );
+                size
+            }
+        } else {
+            0
+        };
+
+        let client = reqwest::Client::new();
+        let mut request = client.get(artifact.url);
+        if resume_from > 0 {
+            request = request.header("Range", format!("bytes={}-", resume_from));
+        }
+
+        let mut response = request.send().await?;
+
+        if resume_from > 0 && response.status() == reqwest::StatusCode::OK {
+            warn!(
+                "Server refused range request for {}, restarting artifact download",
+                artifact.filename
+            );
+            drop(response);
+            fs::remove_file(partial_path)?;
+            resume_from = 0;
+            response = client.get(artifact.url).send().await?;
+        }
+
+        if !response.status().is_success()
+            && response.status() != reqwest::StatusCode::PARTIAL_CONTENT
+        {
+            return Err(anyhow::anyhow!(
+                "Failed to download {}: HTTP {}",
+                artifact.filename,
+                response.status()
+            ));
+        }
+
+        let mut downloaded = resume_from;
+        let mut stream = response.bytes_stream();
+        let mut partial_file = if resume_from > 0 {
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(partial_path)?
+        } else {
+            std::fs::File::create(partial_path)?
+        };
+
+        self.emit_download_progress(
+            model_id,
+            downloaded_before_artifact + downloaded,
+            total_download_size,
+        );
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            partial_file.write_all(&chunk)?;
+            downloaded += chunk.len() as u64;
+
+            self.emit_download_progress(
+                model_id,
+                downloaded_before_artifact + downloaded,
+                total_download_size,
+            );
+        }
+
+        partial_file.flush()?;
+        drop(partial_file);
+
+        let actual_size = partial_path.metadata()?.len();
+        if actual_size != artifact.size_bytes {
+            return Err(anyhow::anyhow!(
+                "Download size mismatch for {}: expected {} bytes, got {} bytes",
+                artifact.filename,
+                artifact.size_bytes,
+                actual_size
+            ));
+        }
+
+        fs::rename(partial_path, final_path)?;
+        Self::verify_file_sha256(final_path, artifact.sha256)?;
+
+        Ok(())
+    }
+
+    async fn download_model_artifacts(
+        &self,
+        model_id: &str,
+        model_info: &ModelInfo,
+        artifacts: &'static [ArtifactSpec],
+    ) -> Result<()> {
+        let model_dir = self.models_dir.join(&model_info.filename);
+        fs::create_dir_all(&model_dir)?;
+
+        {
+            let mut models = self.available_models.lock().unwrap();
+            if let Some(model) = models.get_mut(model_id) {
+                model.is_downloading = true;
+            }
+        }
+
+        let total_download_size: u64 = artifacts.iter().map(|artifact| artifact.size_bytes).sum();
+        let mut downloaded_total = 0_u64;
+
+        let result: Result<()> = async {
+            for artifact in artifacts {
+                let final_path = model_dir.join(artifact.filename);
+                let partial_path = model_dir.join(format!("{}.partial", artifact.filename));
+
+                self.download_artifact(
+                    model_id,
+                    *artifact,
+                    &final_path,
+                    &partial_path,
+                    downloaded_total,
+                    total_download_size,
+                )
+                .await?;
+
+                downloaded_total += artifact.size_bytes;
+            }
+            Ok(())
+        }
+        .await;
+
+        if let Err(err) = result {
+            let mut models = self.available_models.lock().unwrap();
+            if let Some(model) = models.get_mut(model_id) {
+                model.is_downloading = false;
+            }
+            return Err(err);
+        }
+
+        {
+            let mut models = self.available_models.lock().unwrap();
+            if let Some(model) = models.get_mut(model_id) {
+                model.is_downloading = false;
+                model.is_downloaded = true;
+                model.partial_size = 0;
+            }
+        }
+
+        let _ = self.app_handle.emit("model-download-complete", model_id);
+
+        info!(
+            "Successfully downloaded all artifacts for model {} to {:?}",
+            model_id, model_dir
+        );
+        Ok(())
     }
 
     fn migrate_bundled_models(&self) -> Result<()> {
@@ -262,6 +560,30 @@ impl ModelManager {
         let mut models = self.available_models.lock().unwrap();
 
         for model in models.values_mut() {
+            if let Some(artifacts) = Self::model_artifacts(&model.id) {
+                let model_dir = self.models_dir.join(&model.filename);
+                let mut has_all_artifacts = model_dir.exists() && model_dir.is_dir();
+                let mut partial_total = 0_u64;
+
+                for artifact in artifacts {
+                    let artifact_path = model_dir.join(artifact.filename);
+                    let partial_path = model_dir.join(format!("{}.partial", artifact.filename));
+
+                    if !artifact_path.exists() {
+                        has_all_artifacts = false;
+                    }
+
+                    if partial_path.exists() {
+                        partial_total += partial_path.metadata().map(|m| m.len()).unwrap_or(0);
+                    }
+                }
+
+                model.is_downloaded = has_all_artifacts;
+                model.is_downloading = false;
+                model.partial_size = partial_total;
+                continue;
+            }
+
             if model.is_directory {
                 // For directory-based models, check if the directory exists
                 let model_path = self.models_dir.join(&model.filename);
@@ -339,6 +661,12 @@ impl ModelManager {
 
         let model_info =
             model_info.ok_or_else(|| anyhow::anyhow!("Model not found: {}", model_id))?;
+
+        if let Some(artifacts) = Self::model_artifacts(model_id) {
+            return self
+                .download_model_artifacts(model_id, &model_info, artifacts)
+                .await;
+        }
 
         let url = model_info
             .url
