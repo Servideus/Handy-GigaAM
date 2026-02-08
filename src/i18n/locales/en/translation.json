@@ -53,8 +53,12 @@
         "description": "Very fast, English only. Handles accents well."
       },
       "gigaam-v3-e2e-ctc-int8": {
-        "name": "GigaAM v3 e2e-CTC",
-        "description": "Русский. Пунктуация и нормализация. CPU."
+        "name": "GigaAM v3 e2e-CTC (compressed)",
+        "description": "Good quality and excellent speed."
+      },
+      "gigaam-v3-e2e-ctc": {
+        "name": "GigaAM v3 e2e-CTC (full)",
+        "description": "Excellent quality and good speed."
       }
     },
     "errors": {

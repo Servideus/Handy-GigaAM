@@ -15,8 +15,10 @@ use std::sync::Mutex;
 use tar::Archive;
 use tauri::{AppHandle, Emitter, Manager};
 
-const GIGAAM_MODEL_ID: &str = "gigaam-v3-e2e-ctc-int8";
-const GIGAAM_MODEL_DIR: &str = "gigaam-v3-e2e-ctc-int8";
+const GIGAAM_INT8_MODEL_ID: &str = "gigaam-v3-e2e-ctc-int8";
+const GIGAAM_INT8_MODEL_DIR: &str = "gigaam-v3-e2e-ctc-int8";
+const GIGAAM_FULL_MODEL_ID: &str = "gigaam-v3-e2e-ctc";
+const GIGAAM_FULL_MODEL_DIR: &str = "gigaam-v3-e2e-ctc";
 
 #[derive(Clone, Copy)]
 struct ArtifactSpec {
@@ -26,7 +28,7 @@ struct ArtifactSpec {
     size_bytes: u64,
 }
 
-const GIGAAM_ARTIFACTS: [ArtifactSpec; 3] = [
+const GIGAAM_INT8_ARTIFACTS: [ArtifactSpec; 3] = [
     ArtifactSpec {
         filename: "v3_e2e_ctc.int8.onnx",
         url: "https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main/v3_e2e_ctc.int8.onnx",
@@ -47,7 +49,29 @@ const GIGAAM_ARTIFACTS: [ArtifactSpec; 3] = [
     },
 ];
 
-const GIGAAM_TOTAL_SIZE_BYTES: u64 = 224_893_347 + 2_007 + 899;
+const GIGAAM_FULL_ARTIFACTS: [ArtifactSpec; 3] = [
+    ArtifactSpec {
+        filename: "v3_e2e_ctc.onnx",
+        url: "https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main/v3_e2e_ctc.onnx",
+        sha256: "377701bd33568f4733feec2db5b2dc12544fd09a5a5dfa69ccf55d161f84027a",
+        size_bytes: 885_950_079,
+    },
+    ArtifactSpec {
+        filename: "v3_e2e_ctc_vocab.txt",
+        url: "https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main/v3_e2e_ctc_vocab.txt",
+        sha256: "142de7570b3de5b3035ce111a89c228e80e6085273731d944093ddf24fa539cd",
+        size_bytes: 2_007,
+    },
+    ArtifactSpec {
+        filename: "v3_e2e_ctc.yaml",
+        url: "https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main/v3_e2e_ctc.yaml",
+        sha256: "e67eca3a311ad7c8813d36dff6b8eeba7ad3459fd811d6faea2a26535754a358",
+        size_bytes: 899,
+    },
+];
+
+const GIGAAM_INT8_TOTAL_SIZE_BYTES: u64 = 224_893_347 + 2_007 + 899;
+const GIGAAM_FULL_TOTAL_SIZE_BYTES: u64 = 885_950_079 + 2_007 + 899;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub enum EngineType {
@@ -240,14 +264,14 @@ impl ModelManager {
         );
 
         available_models.insert(
-            GIGAAM_MODEL_ID.to_string(),
+            GIGAAM_INT8_MODEL_ID.to_string(),
             ModelInfo {
-                id: GIGAAM_MODEL_ID.to_string(),
-                name: "GigaAM v3 e2e-CTC".to_string(),
-                description: "Русский. Пунктуация и нормализация. CPU.".to_string(),
-                filename: GIGAAM_MODEL_DIR.to_string(),
+                id: GIGAAM_INT8_MODEL_ID.to_string(),
+                name: "GigaAM v3 e2e-CTC (compressed)".to_string(),
+                description: "Russian. Punctuation and normalization. CPU.".to_string(),
+                filename: GIGAAM_INT8_MODEL_DIR.to_string(),
                 url: None,
-                size_mb: (GIGAAM_TOTAL_SIZE_BYTES + (1024 * 1024) - 1) / (1024 * 1024),
+                size_mb: (GIGAAM_INT8_TOTAL_SIZE_BYTES + (1024 * 1024) - 1) / (1024 * 1024),
                 is_downloaded: false,
                 is_downloading: false,
                 partial_size: 0,
@@ -255,6 +279,25 @@ impl ModelManager {
                 engine_type: EngineType::Gigaam,
                 accuracy_score: 0.90,
                 speed_score: 0.55,
+            },
+        );
+
+        available_models.insert(
+            GIGAAM_FULL_MODEL_ID.to_string(),
+            ModelInfo {
+                id: GIGAAM_FULL_MODEL_ID.to_string(),
+                name: "GigaAM v3 e2e-CTC (full)".to_string(),
+                description: "Russian. Punctuation and normalization. CPU.".to_string(),
+                filename: GIGAAM_FULL_MODEL_DIR.to_string(),
+                url: None,
+                size_mb: (GIGAAM_FULL_TOTAL_SIZE_BYTES + (1024 * 1024) - 1) / (1024 * 1024),
+                is_downloaded: false,
+                is_downloading: false,
+                partial_size: 0,
+                is_directory: true,
+                engine_type: EngineType::Gigaam,
+                accuracy_score: 0.95,
+                speed_score: 0.50,
             },
         );
 
@@ -287,10 +330,10 @@ impl ModelManager {
     }
 
     fn model_artifacts(model_id: &str) -> Option<&'static [ArtifactSpec]> {
-        if model_id == GIGAAM_MODEL_ID {
-            Some(&GIGAAM_ARTIFACTS)
-        } else {
-            None
+        match model_id {
+            GIGAAM_INT8_MODEL_ID => Some(&GIGAAM_INT8_ARTIFACTS),
+            GIGAAM_FULL_MODEL_ID => Some(&GIGAAM_FULL_ARTIFACTS),
+            _ => None,
         }
     }
 

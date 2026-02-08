@@ -53,8 +53,12 @@
         "description": "Very fast, English only. Handles accents well."
       },
       "gigaam-v3-e2e-ctc-int8": {
-        "name": "GigaAM v3 e2e-CTC",
-        "description": "Русский. Пунктуация и нормализация. CPU."
+        "name": "GigaAM v3 e2e-CTC (\u0441\u0436\u0430\u0442\u0430\u044f)",
+        "description": "\u0425\u043e\u0440\u043e\u0448\u0435\u0435 \u043a\u0430\u0447\u0435\u0441\u0442\u0432\u043e \u0438 \u043e\u0442\u043b\u0438\u0447\u043d\u0430\u044f \u0441\u043a\u043e\u0440\u043e\u0441\u0442\u044c."
+      },
+      "gigaam-v3-e2e-ctc": {
+        "name": "GigaAM v3 e2e-CTC (\u043f\u043e\u043b\u043d\u0430\u044f)",
+        "description": "\u041e\u0442\u043b\u0438\u0447\u043d\u043e\u0435 \u043a\u0430\u0447\u0435\u0441\u0442\u0432\u043e \u0438 \u0445\u043e\u0440\u043e\u0448\u0430\u044f \u0441\u043a\u043e\u0440\u043e\u0441\u0442\u044c."
       }
     },
     "errors": {

@@ -14,7 +14,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-const MODEL_FILENAME: &str = "v3_e2e_ctc.int8.onnx";
+const MODEL_FILENAMES: [&str; 2] = ["v3_e2e_ctc.int8.onnx", "v3_e2e_ctc.onnx"];
 const VOCAB_FILENAME: &str = "v3_e2e_ctc_vocab.txt";
 const CONFIG_FILENAME: &str = "v3_e2e_ctc.yaml";
 
@@ -260,16 +260,20 @@ struct GigaamModel {
 
 impl GigaamModel {
     fn new(model_dir: &Path) -> Result<Self> {
-        let model_path = model_dir.join(MODEL_FILENAME);
+        let model_path = MODEL_FILENAMES
+            .iter()
+            .map(|filename| model_dir.join(filename))
+            .find(|path| path.exists())
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Missing GigaAM model file in {}. Expected one of: {}",
+                    model_dir.display(),
+                    MODEL_FILENAMES.join(", ")
+                )
+            })?;
         let vocab_path = model_dir.join(VOCAB_FILENAME);
         let config_path = model_dir.join(CONFIG_FILENAME);
 
-        if !model_path.exists() {
-            return Err(anyhow::anyhow!(
-                "Missing GigaAM model file: {}",
-                model_path.display()
-            ));
-        }
         if !vocab_path.exists() {
             return Err(anyhow::anyhow!(
                 "Missing GigaAM vocab file: {}",

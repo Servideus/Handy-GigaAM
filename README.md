@@ -30,7 +30,8 @@ The process is entirely local:
 - Transcription uses your choice of models:
   - **Whisper models** (Small/Medium/Turbo/Large) with GPU acceleration when available
   - **Parakeet V3** - CPU-optimized model with excellent performance and automatic language detection
-  - **GigaAM v3 e2e-CTC (int8)** - CPU-only Russian model with punctuation and normalization, fully offline after download
+  - **GigaAM v3 e2e-CTC (compressed/int8)** - CPU-only Russian model with punctuation and normalization, good quality and excellent speed
+  - **GigaAM v3 e2e-CTC (full)** - CPU-only Russian model with punctuation and normalization, excellent quality and good speed
 - Works on Windows, macOS, and Linux
 
 ## Quick Start
@@ -141,11 +142,12 @@ The following are recommendations for running Handy on your own machine. If you 
 - **Performance**: ~5x real-time speed on mid-range hardware (tested on i5)
 - **Automatic language detection** - no manual language selection required
 
-**For GigaAM v3 e2e-CTC Model:**
+**For GigaAM v3 e2e-CTC Models:**
 
 - **CPU-only operation** - no GPU required
 - **Russian-focused output** with punctuation and normalization
-- **Model size**: ~215 MB total download (`v3_e2e_ctc.int8.onnx` + vocab + yaml)
+- **Compressed model size**: ~215 MB total download (`v3_e2e_ctc.int8.onnx` + vocab + yaml)
+- **Full model size**: ~845 MiB total download (`v3_e2e_ctc.onnx` + vocab + yaml)
 
 ## Roadmap & Active Development
 
@@ -225,9 +227,15 @@ Download the models you want from below
 - V2 (473 MB): `https://blob.handy.computer/parakeet-v2-int8.tar.gz`
 - V3 (478 MB): `https://blob.handy.computer/parakeet-v3-int8.tar.gz`
 
-**GigaAM v3 e2e-CTC (three files in one directory):**
+**GigaAM v3 e2e-CTC (compressed/int8, three files in one directory):**
 
 - ONNX (225 MB): `https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main/v3_e2e_ctc.int8.onnx`
+- Vocab: `https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main/v3_e2e_ctc_vocab.txt`
+- Config: `https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main/v3_e2e_ctc.yaml`
+
+**GigaAM v3 e2e-CTC (full, three files in one directory):**
+
+- ONNX (886 MB): `https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main/v3_e2e_ctc.onnx`
 - Vocab: `https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main/v3_e2e_ctc_vocab.txt`
 - Config: `https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main/v3_e2e_ctc.yaml`
 
@@ -265,13 +273,14 @@ Final structure should look like:
     `-- (config files)
 ```
 
-**For GigaAM v3 e2e-CTC (directory with exact filenames):**
+**For GigaAM v3 e2e-CTC (directories with exact filenames):**
 
-1. Create this directory inside `models`: `gigaam-v3-e2e-ctc-int8`
-2. Place the three files inside it:
-   - `v3_e2e_ctc.int8.onnx`
-   - `v3_e2e_ctc_vocab.txt`
-   - `v3_e2e_ctc.yaml`
+1. Create one (or both) directories inside `models`:
+   - `gigaam-v3-e2e-ctc-int8` (compressed/int8)
+   - `gigaam-v3-e2e-ctc` (full)
+2. Place the matching three files inside each directory:
+   - `gigaam-v3-e2e-ctc-int8`: `v3_e2e_ctc.int8.onnx`, `v3_e2e_ctc_vocab.txt`, `v3_e2e_ctc.yaml`
+   - `gigaam-v3-e2e-ctc`: `v3_e2e_ctc.onnx`, `v3_e2e_ctc_vocab.txt`, `v3_e2e_ctc.yaml`
 
 Final structure should include:
 
@@ -281,6 +290,10 @@ Final structure should include:
 |   |-- v3_e2e_ctc.int8.onnx
 |   |-- v3_e2e_ctc_vocab.txt
 |   `-- v3_e2e_ctc.yaml
+|-- gigaam-v3-e2e-ctc/
+|   |-- v3_e2e_ctc.onnx
+|   |-- v3_e2e_ctc_vocab.txt
+|   `-- v3_e2e_ctc.yaml
 |-- parakeet-tdt-0.6b-v2-int8/
 `-- parakeet-tdt-0.6b-v3-int8/
 ```
@@ -288,7 +301,7 @@ Final structure should include:
 **Important Notes:**
 
 - For Parakeet models, the extracted directory name **must** match exactly as shown above
-- For GigaAM, the directory name and all three filenames **must** match exactly as shown above
+- For GigaAM, the directory name (`gigaam-v3-e2e-ctc-int8` or `gigaam-v3-e2e-ctc`) and all three filenames **must** match exactly as shown above
 - Do not rename the `.bin` files for Whisper models; use the exact filenames from the download URLs
 - After placing the files, restart Handy to detect the new models
 
