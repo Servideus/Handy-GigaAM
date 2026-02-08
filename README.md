@@ -3,7 +3,7 @@
 [![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/WVBeWsNXK4)
 
 > This repository is a fork of the original [Handy](https://github.com/cjpais/Handy) focused on Russian transcription support.
-> Key fork differences: added GigaAM v3 e2e-CTC models (compressed/int8 and full), Russian-focused model options, and release workflow updates for optional Windows signing.
+> Key fork differences: added [GigaAM v3 e2e-CTC models](https://github.com/salute-developers/GigaAM) (compressed/int8 and full), Russian-focused model options, and release workflow updates for optional Windows signing.
 > Russian documentation: [README.ru.md](README.ru.md)
 
 **A free, open source, and extensible speech-to-text application that works completely offline.**
