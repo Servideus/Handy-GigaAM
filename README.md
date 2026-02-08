@@ -45,6 +45,8 @@ The process is entirely local:
 4. Configure your preferred keyboard shortcuts in Settings
 5. Start transcribing!
 
+Code signing details and optional SignPath setup are documented in [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md).
+
 ### Development Setup
 
 For detailed build instructions including platform-specific requirements, see [BUILD.md](BUILD.md).
