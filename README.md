@@ -181,6 +181,10 @@ We're actively working on several features and improvements. Contributions and f
 
 ## Troubleshooting
 
+### Windows: SmartScreen warning (if build is unsigned)
+
+If a Windows build is unsigned, SmartScreen warnings are expected. In the prompt, use **More info** (`Подробнее`) and then **Run anyway** (`Выполнить в любом случае`) to start the app. Download installers only from this repository's GitHub Releases; if checksums are provided in the release notes, verify SHA256 before running.
+
 ### Manual Model Installation (For Proxy Users or Network Restrictions)
 
 If you're behind a proxy, firewall, or in a restricted network environment where Handy cannot download models automatically, you can manually download and install them. The URLs are publicly accessible from any browser.
