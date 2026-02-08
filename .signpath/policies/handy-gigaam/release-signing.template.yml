@@ -1,0 +1,20 @@
+# Optional template for SignPath trusted-build policy.
+# Copy to a non-template filename and adapt to your SignPath project.
+#
+# This file is intentionally non-enforced by CI until you wire it into
+# your SignPath project configuration.
+
+policy:
+  name: "Handy-GigaAM release signing (template)"
+  description: "Template policy for release branch trusted builds"
+
+trustedBuild:
+  # Restrict to this repository and release workflow.
+  repository: "Servideus/Handy-GigaAM"
+  workflow: "publish.yml"
+  branch: "release"
+
+  # Optional hardening examples:
+  # allowReRuns: false
+  # requireImmutableRun: true
+  # requireTagPattern: "^app-v[0-9]+\\.[0-9]+\\.[0-9]+$"

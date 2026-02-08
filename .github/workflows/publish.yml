@@ -7,6 +7,7 @@ on:
       - release
 
 permissions:
+  actions: read
   contents: write
 
 jobs:
@@ -162,3 +163,112 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Check SignPath configuration (Windows)
+        if: matrix.os == 'windows-latest'
+        id: signpath-config
+        shell: bash
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          SIGNPATH_PROJECT_SLUG: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+          SIGNPATH_SIGNING_POLICY_SLUG: ${{ secrets.SIGNPATH_SIGNING_POLICY_SLUG }}
+        run: |
+          if [ -n "$SIGNPATH_API_TOKEN" ] && \
+             [ -n "$SIGNPATH_ORGANIZATION_ID" ] && \
+             [ -n "$SIGNPATH_PROJECT_SLUG" ] && \
+             [ -n "$SIGNPATH_SIGNING_POLICY_SLUG" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "SignPath signing is enabled."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "SignPath signing is disabled (missing secrets)."
+          fi
+
+      - name: Stage unsigned Windows installers
+        if: matrix.os == 'windows-latest' && steps.signpath-config.outputs.enabled == 'true'
+        shell: pwsh
+        run: |
+          $bundleRoot = Join-Path $PWD "src-tauri/target/release/bundle"
+          $stagingRoot = Join-Path $PWD "dist/windows-unsigned"
+
+          if (!(Test-Path $bundleRoot)) {
+            throw "Windows bundle directory not found: $bundleRoot"
+          }
+
+          if (Test-Path $stagingRoot) {
+            Remove-Item -Path $stagingRoot -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $stagingRoot | Out-Null
+
+          $targets = Get-ChildItem -Path $bundleRoot -Recurse -File | Where-Object {
+            $_.Extension -in @(".exe", ".msi")
+          }
+
+          if ($targets.Count -eq 0) {
+            throw "No .exe/.msi installers found under $bundleRoot"
+          }
+
+          foreach ($file in $targets) {
+            Copy-Item -Path $file.FullName -Destination (Join-Path $stagingRoot $file.Name) -Force
+            Write-Host "Staged unsigned artifact: $($file.Name)"
+          }
+
+      - name: Upload unsigned Windows installers
+        if: matrix.os == 'windows-latest' && steps.signpath-config.outputs.enabled == 'true'
+        id: upload-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-windows
+          path: dist/windows-unsigned/*
+          if-no-files-found: error
+
+      - name: Sign Windows installers with SignPath
+        if: matrix.os == 'windows-latest' && steps.signpath-config.outputs.enabled == 'true'
+        id: signpath
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ secrets.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ secrets.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-for-completion: true
+          output-artifact-directory: dist/windows-signed
+
+      - name: Replace release Windows assets with signed artifacts
+        if: matrix.os == 'windows-latest' && steps.signpath-config.outputs.enabled == 'true'
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = (Get-Content -Raw "src-tauri/tauri.conf.json" | ConvertFrom-Json).version
+          $tag = "app-v$version"
+          $signedRoot = Join-Path $PWD "dist/windows-signed"
+
+          if (!(Test-Path $signedRoot)) {
+            throw "Signed artifacts directory not found: $signedRoot"
+          }
+
+          $signedTargets = Get-ChildItem -Path $signedRoot -Recurse -File | Where-Object {
+            $_.Extension -in @(".exe", ".msi")
+          }
+
+          if ($signedTargets.Count -eq 0) {
+            throw "No signed .exe/.msi files found under $signedRoot"
+          }
+
+          $uploadPaths = @()
+          foreach ($file in $signedTargets) {
+            $uploadPaths += $file.FullName
+            Write-Host "Uploading signed artifact: $($file.Name)"
+          }
+
+          gh release upload $tag @uploadPaths --clobber --repo "${{ github.repository }}"
+
+      - name: Keep unsigned Windows assets (SignPath disabled)
+        if: matrix.os == 'windows-latest' && steps.signpath-config.outputs.enabled != 'true'
+        shell: bash
+        run: echo "Publishing unsigned Windows artifacts because SignPath secrets are not configured."
