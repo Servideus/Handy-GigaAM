@@ -22,6 +22,8 @@ jobs:
         env:
           RELEASE_VERSION: ${{ github.event.release.tag_name }}
         run: |
+          set -euo pipefail
+
           # Normalize version from release tag:
           # app-v0.7.2 -> 0.7.2
           # v0.7.2 -> 0.7.2
@@ -34,17 +36,26 @@ jobs:
 
           # Retry logic in case AppImage isn't immediately available
           for i in {1..30}; do
-            HASH=$(nix-prefetch-url --name "Handy_${VERSION}_amd64.AppImage" "$APPIMAGE_URL" 2>&1 | grep "^sha256-" || true)
-            if [ -n "$HASH" ]; then
+            RAW_HASH="$(nix-prefetch-url --type sha256 --name "Handy_${VERSION}_amd64.AppImage" "$APPIMAGE_URL" 2>/dev/null | tail -n1 | tr -d '\r' || true)"
+
+            HASH=""
+            if [[ "$RAW_HASH" == sha256-* ]]; then
+              HASH="$RAW_HASH"
+            elif [[ "$RAW_HASH" =~ ^[0-9a-z]{52}$ ]]; then
+              HASH="$(nix hash to-sri --type sha256 "$RAW_HASH" 2>/dev/null || true)"
+            fi
+
+            if [[ "$HASH" == sha256-* ]]; then
               echo "hash=$HASH" >> "$GITHUB_OUTPUT"
               echo "Successfully computed hash: $HASH"
               exit 0
             fi
-            echo "Attempt $i: AppImage not yet available, waiting..."
+
+            echo "Attempt $i: AppImage not yet available or hash parse failed, waiting..."
             sleep 5
           done
 
-          echo "Failed to fetch AppImage after retries"
+          echo "Failed to fetch AppImage hash after retries"
           exit 1
 
       - name: Update flake.nix
