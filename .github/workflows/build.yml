@@ -337,8 +337,8 @@ jobs:
             '.bundle.linux.deb.files["/usr/lib/libonnxruntime.so"] = $so | .bundle.linux.deb.files["/usr/lib/libonnxruntime.so.1"] = $so1 | .bundle.linux.deb.files["/usr/lib/libonnxruntime.so.1.24.2"] = $sov' \
             src-tauri/tauri.conf.json > tmp.json && mv tmp.json src-tauri/tauri.conf.json
 
-      - name: Disable updater artifacts for unsigned release
-        if: inputs.release-id != '' && !inputs.sign-binaries
+      - name: Disable updater artifacts for unsigned build
+        if: ${{ !inputs.sign-binaries }}
         shell: bash
         run: |
           jq '.bundle.createUpdaterArtifacts = false' \

@@ -46,7 +46,7 @@ jobs:
     with:
       platform: ${{ matrix.platform }}
       target: ${{ matrix.target }}
-      build-args: ${{ matrix.args }}
+      build-args: ${{ format('{0} --no-sign', matrix.args) }}
       upload-artifacts: true
-      sign-binaries: true
+      sign-binaries: false
     secrets: inherit
