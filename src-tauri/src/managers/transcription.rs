@@ -354,7 +354,12 @@ impl TranscriptionManager {
                 LoadedEngine::SenseVoice(engine)
             }
             EngineType::GigaAM => {
-                let engine = GigaAMModel::load(&model_path, &Quantization::Int8).map_err(|e| {
+                let quantization = if model_id == "gigaam-v3-e2e-ctc-full" {
+                    Quantization::FP32
+                } else {
+                    Quantization::Int8
+                };
+                let engine = GigaAMModel::load(&model_path, &quantization).map_err(|e| {
                     let error_msg = format!("Failed to load gigaam model {}: {}", model_id, e);
                     emit_loading_failed(&error_msg);
                     anyhow::anyhow!(error_msg)

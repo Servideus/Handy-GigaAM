@@ -81,6 +81,10 @@
         "name": "GigaAM v3",
         "description": "Nhận dạng giọng nói tiếng Nga. Nhanh và chính xác."
       },
+      "gigaam-v3-e2e-ctc-full": {
+        "name": "GigaAM v3 (full)",
+        "description": "Russian speech recognition. Best quality, larger download."
+      },
       "canary-180m-flash": {
         "name": "Canary 180M Flash",
         "description": "Rất nhanh. Tiếng Anh, tiếng Đức, tiếng Tây Ban Nha, tiếng Pháp. Hỗ trợ dịch thuật."

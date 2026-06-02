@@ -17,6 +17,37 @@ use std::time::{Duration, Instant};
 use tar::Archive;
 use tauri::{AppHandle, Emitter, Manager};
 
+const GIGAAM_FULL_MODEL_ID: &str = "gigaam-v3-e2e-ctc-full";
+
+#[derive(Debug, Clone, Copy)]
+struct ArtifactSpec {
+    filename: &'static str,
+    url: &'static str,
+    sha256: &'static str,
+    size: u64,
+}
+
+const GIGAAM_FULL_ARTIFACTS: [ArtifactSpec; 2] = [
+    ArtifactSpec {
+        filename: "model.onnx",
+        url: "https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main/v3_e2e_ctc.onnx",
+        sha256: "377701bd33568f4733feec2db5b2dc12544fd09a5a5dfa69ccf55d161f84027a",
+        size: 885_950_079,
+    },
+    ArtifactSpec {
+        filename: "vocab.txt",
+        url: "https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main/v3_e2e_ctc_vocab.txt",
+        sha256: "142de7570b3de5b3035ce111a89c228e80e6085273731d944093ddf24fa539cd",
+        size: 2_007,
+    },
+];
+
+#[derive(Debug, Default, PartialEq)]
+struct LegacyGigaamMigration {
+    int8_detected: bool,
+    full_detected: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub enum EngineType {
     Whisper,
@@ -498,7 +529,36 @@ impl ModelManager {
                 speed_score: 0.75,
                 supports_translation: false,
                 is_recommended: false,
-                supported_languages: gigaam_languages,
+                supported_languages: gigaam_languages.clone(),
+                supports_language_selection: false,
+                is_custom: false,
+            },
+        );
+
+        available_models.insert(
+            GIGAAM_FULL_MODEL_ID.to_string(),
+            ModelInfo {
+                id: GIGAAM_FULL_MODEL_ID.to_string(),
+                name: "GigaAM v3 (full)".to_string(),
+                description: "Russian speech recognition. Best quality, larger download."
+                    .to_string(),
+                filename: "giga-am-v3-full".to_string(),
+                url: Some(GIGAAM_FULL_ARTIFACTS[0].url.to_string()),
+                sha256: None,
+                size_mb: (GIGAAM_FULL_ARTIFACTS.iter().map(|a| a.size).sum::<u64>()
+                    + (1024 * 1024)
+                    - 1)
+                    / (1024 * 1024),
+                is_downloaded: false,
+                is_downloading: false,
+                partial_size: 0,
+                is_directory: true,
+                engine_type: EngineType::GigaAM,
+                accuracy_score: 0.95,
+                speed_score: 0.55,
+                supports_translation: false,
+                is_recommended: false,
+                supported_languages: gigaam_languages.clone(),
                 supports_language_selection: false,
                 is_custom: false,
             },
@@ -629,6 +689,9 @@ impl ModelManager {
         // Migrate GigaAM from single-file to directory format
         manager.migrate_gigaam_to_directory()?;
 
+        // Migrate GigaAM directories created by the pre-0.8.3 Handy-GigaAM fork
+        manager.migrate_legacy_fork_gigaam()?;
+
         // Check which models are already downloaded
         manager.update_download_status()?;
 
@@ -719,6 +782,117 @@ impl ModelManager {
         Ok(())
     }
 
+    fn migrate_legacy_fork_gigaam(&self) -> Result<()> {
+        let migration = Self::migrate_legacy_fork_gigaam_dirs(&self.models_dir)?;
+        let mut settings = get_settings(&self.app_handle);
+
+        if let Some(selected_model) =
+            Self::migrate_legacy_gigaam_selection(&settings.selected_model, &migration)
+        {
+            settings.selected_model = selected_model;
+            write_settings(&self.app_handle, settings);
+        }
+
+        Ok(())
+    }
+
+    fn migrate_legacy_fork_gigaam_dirs(models_dir: &Path) -> Result<LegacyGigaamMigration> {
+        let int8_detected = Self::migrate_legacy_gigaam_dir(
+            models_dir,
+            "gigaam-v3-e2e-ctc-int8",
+            "v3_e2e_ctc.int8.onnx",
+            "giga-am-v3-int8",
+            "model.int8.onnx",
+        )?;
+        let full_detected = Self::migrate_legacy_gigaam_dir(
+            models_dir,
+            "gigaam-v3-e2e-ctc",
+            "v3_e2e_ctc.onnx",
+            "giga-am-v3-full",
+            "model.onnx",
+        )?;
+
+        Ok(LegacyGigaamMigration {
+            int8_detected,
+            full_detected,
+        })
+    }
+
+    fn migrate_legacy_gigaam_dir(
+        models_dir: &Path,
+        old_dir_name: &str,
+        old_model_name: &str,
+        new_dir_name: &str,
+        new_model_name: &str,
+    ) -> Result<bool> {
+        let old_dir = models_dir.join(old_dir_name);
+        let old_model = old_dir.join(old_model_name);
+        if !old_model.exists() {
+            return Ok(false);
+        }
+
+        let new_dir = models_dir.join(new_dir_name);
+        let new_model = new_dir.join(new_model_name);
+        let old_vocab = old_dir.join("v3_e2e_ctc_vocab.txt");
+        let new_vocab = new_dir.join("vocab.txt");
+        if !new_vocab.exists() && !old_vocab.exists() {
+            return Err(anyhow::anyhow!(
+                "Legacy GigaAM vocabulary is missing: {}",
+                old_vocab.display()
+            ));
+        }
+
+        fs::create_dir_all(&new_dir)?;
+        if !new_model.exists() {
+            fs::rename(&old_model, &new_model)?;
+        }
+
+        if !new_vocab.exists() {
+            fs::rename(old_vocab, new_vocab)?;
+        }
+
+        fs::remove_dir_all(old_dir)?;
+        info!("Migrated legacy GigaAM directory {}", old_dir_name);
+        Ok(true)
+    }
+
+    fn migrate_legacy_gigaam_selection(
+        selected_model: &str,
+        migration: &LegacyGigaamMigration,
+    ) -> Option<String> {
+        if selected_model == "gigaam-v3-e2e-ctc-int8" {
+            Some("gigaam-v3-e2e-ctc".to_string())
+        } else if selected_model == "gigaam-v3-e2e-ctc" && migration.full_detected {
+            Some(GIGAAM_FULL_MODEL_ID.to_string())
+        } else {
+            None
+        }
+    }
+
+    fn artifact_manifest(model_id: &str) -> Option<&'static [ArtifactSpec]> {
+        match model_id {
+            GIGAAM_FULL_MODEL_ID => Some(&GIGAAM_FULL_ARTIFACTS),
+            _ => None,
+        }
+    }
+
+    fn path_size(path: &Path) -> u64 {
+        if path.is_file() {
+            return path.metadata().map(|m| m.len()).unwrap_or(0);
+        }
+        if path.is_dir() {
+            return fs::read_dir(path)
+                .map(|entries| {
+                    entries
+                        .filter_map(|entry| entry.ok())
+                        .map(|entry| Self::path_size(&entry.path()))
+                        .sum()
+                })
+                .unwrap_or(0);
+        }
+        0
+    }
+
     fn update_download_status(&self) -> Result<()> {
         let mut models = self.available_models.lock().unwrap();
 
@@ -747,7 +921,7 @@ impl ModelManager {
 
                 // Get partial file size if it exists (for the .tar.gz being downloaded)
                 if partial_path.exists() {
-                    model.partial_size = partial_path.metadata().map(|m| m.len()).unwrap_or(0);
+                    model.partial_size = Self::path_size(&partial_path);
                 } else {
                     model.partial_size = 0;
                 }
@@ -992,6 +1166,10 @@ impl ModelManager {
 
         let model_info =
             model_info.ok_or_else(|| anyhow::anyhow!("Model not found: {}", model_id))?;
+
+        if let Some(artifacts) = Self::artifact_manifest(model_id) {
+            return self.download_artifact_model(&model_info, artifacts).await;
+        }
 
         let url = model_info
             .url
@@ -1324,6 +1502,163 @@ impl ModelManager {
         Ok(())
     }
 
+    async fn download_artifact_model(
+        &self,
+        model_info: &ModelInfo,
+        artifacts: &[ArtifactSpec],
+    ) -> Result<()> {
+        let model_id = model_info.id.as_str();
+        let model_path = self.models_dir.join(&model_info.filename);
+        let partial_dir = self
+            .models_dir
+            .join(format!("{}.partial", &model_info.filename));
+
+        if model_path.exists() {
+            if partial_dir.exists() {
+                let _ = fs::remove_dir_all(&partial_dir);
+            }
+            self.update_download_status()?;
+            return Ok(());
+        }
+
+        fs::create_dir_all(&partial_dir)?;
+        {
+            let mut models = self.available_models.lock().unwrap();
+            if let Some(model) = models.get_mut(model_id) {
+                model.is_downloading = true;
+            }
+        }
+
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+        self.cancel_flags
+            .lock()
+            .unwrap()
+            .insert(model_id.to_string(), cancel_flag.clone());
+        let mut cleanup = DownloadCleanup {
+            available_models: &self.available_models,
+            cancel_flags: &self.cancel_flags,
+            model_id: model_id.to_string(),
+            disarmed: false,
+        };
+
+        let client = reqwest::Client::new();
+        let total_size: u64 = artifacts.iter().map(|artifact| artifact.size).sum();
+        let mut completed_size = 0;
+        let mut last_emit = Instant::now();
+        let throttle_duration = Duration::from_millis(100);
+
+        for artifact in artifacts {
+            let final_path = partial_dir.join(artifact.filename);
+            let partial_path = partial_dir.join(format!("{}.partial", artifact.filename));
+            if final_path.exists() && final_path.metadata()?.len() == artifact.size {
+                if Self::verify_sha256(&final_path, Some(artifact.sha256), artifact.filename)
+                    .is_ok()
+                {
+                    completed_size += artifact.size;
+                    continue;
+                }
+            }
+            if final_path.exists() {
+                let _ = fs::remove_file(&final_path);
+            }
+
+            let mut resume_from = partial_path.metadata().map(|m| m.len()).unwrap_or(0);
+            if resume_from > artifact.size {
+                let _ = fs::remove_file(&partial_path);
+                resume_from = 0;
+            }
+
+            let mut request = client.get(artifact.url);
+            if resume_from > 0 {
+                request = request.header("Range", format!("bytes={}-", resume_from));
+            }
+            let mut response = request.send().await?;
+            if resume_from > 0 && response.status() == reqwest::StatusCode::OK {
+                drop(response);
+                let _ = fs::remove_file(&partial_path);
+                resume_from = 0;
+                response = client.get(artifact.url).send().await?;
+            }
+            if !response.status().is_success()
+                && response.status() != reqwest::StatusCode::PARTIAL_CONTENT
+            {
+                return Err(anyhow::anyhow!(
+                    "Failed to download artifact {}: HTTP {}",
+                    artifact.filename,
+                    response.status()
+                ));
+            }
+
+            let mut downloaded = resume_from;
+            let mut stream = response.bytes_stream();
+            let mut file = if resume_from > 0 {
+                fs::OpenOptions::new().append(true).open(&partial_path)?
+            } else {
+                File::create(&partial_path)?
+            };
+
+            while let Some(chunk) = stream.next().await {
+                if cancel_flag.load(Ordering::Relaxed) {
+                    return Ok(());
+                }
+                let chunk = chunk?;
+                file.write_all(&chunk)?;
+                downloaded += chunk.len() as u64;
+                if last_emit.elapsed() >= throttle_duration {
+                    let progress = DownloadProgress {
+                        model_id: model_id.to_string(),
+                        downloaded: completed_size + downloaded,
+                        total: total_size,
+                        percentage: ((completed_size + downloaded) as f64 / total_size as f64)
+                            * 100.0,
+                    };
+                    let _ = self.app_handle.emit("model-download-progress", &progress);
+                    last_emit = Instant::now();
+                }
+            }
+            file.flush()?;
+            drop(file);
+
+            if partial_path.metadata()?.len() != artifact.size {
+                let _ = fs::remove_file(&partial_path);
+                return Err(anyhow::anyhow!(
+                    "Download incomplete for artifact {}",
+                    artifact.filename
+                ));
+            }
+
+            let _ = self.app_handle.emit("model-verification-started", model_id);
+            let verify_path = partial_path.clone();
+            let verify_sha256 = artifact.sha256.to_string();
+            let verify_model_id = format!("{}:{}", model_id, artifact.filename);
+            tokio::task::spawn_blocking(move || {
+                Self::verify_sha256(&verify_path, Some(&verify_sha256), &verify_model_id)
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("SHA256 task panicked: {}", e))??;
+            let _ = self
+                .app_handle
+                .emit("model-verification-completed", model_id);
+
+            fs::rename(partial_path, final_path)?;
+            completed_size += artifact.size;
+        }
+
+        fs::rename(&partial_dir, &model_path)?;
+        cleanup.disarmed = true;
+        {
+            let mut models = self.available_models.lock().unwrap();
+            if let Some(model) = models.get_mut(model_id) {
+                model.is_downloading = false;
+                model.is_downloaded = true;
+                model.partial_size = 0;
+            }
+        }
+        self.cancel_flags.lock().unwrap().remove(model_id);
+        let _ = self.app_handle.emit("model-download-complete", model_id);
+        Ok(())
+    }
+
     pub fn delete_model(&self, model_id: &str) -> Result<()> {
         debug!("ModelManager: delete_model called for: {}", model_id);
 
@@ -1367,7 +1702,11 @@ impl ModelManager {
         // Delete partial file if it exists (same for both types)
         if partial_path.exists() {
             info!("Deleting partial file at: {:?}", partial_path);
-            fs::remove_file(&partial_path)?;
+            if partial_path.is_dir() {
+                fs::remove_dir_all(&partial_path)?;
+            } else {
+                fs::remove_file(&partial_path)?;
+            }
             info!("Partial file deleted successfully");
             deleted_something = true;
         }
@@ -1645,5 +1984,97 @@ mod tests {
             ModelManager::verify_sha256(&missing_path, Some("anyexpectedhash"), "missing_model");
 
         assert!(result.is_err(), "missing file must return an error");
+    }
+
+    #[test]
+    fn test_gigaam_full_manifest() {
+        let artifacts = ModelManager::artifact_manifest(GIGAAM_FULL_MODEL_ID).unwrap();
+        assert_eq!(artifacts.len(), 2);
+        assert_eq!(artifacts[0].filename, "model.onnx");
+        assert_eq!(artifacts[0].size, 885_950_079);
+        assert_eq!(artifacts[1].filename, "vocab.txt");
+        assert!(ModelManager::artifact_manifest("gigaam-v3-e2e-ctc").is_none());
+    }
+
+    #[test]
+    fn test_path_size_sums_partial_artifact_directory() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("model.onnx.partial"), b"12345").unwrap();
+        fs::write(dir.path().join("vocab.txt"), b"123").unwrap();
+        assert_eq!(ModelManager::path_size(dir.path()), 8);
+    }
+
+    #[test]
+    fn test_migrate_legacy_gigaam_directories() {
+        let dir = TempDir::new().unwrap();
+        let int8 = dir.path().join("gigaam-v3-e2e-ctc-int8");
+        let full = dir.path().join("gigaam-v3-e2e-ctc");
+        fs::create_dir_all(&int8).unwrap();
+        fs::create_dir_all(&full).unwrap();
+        fs::write(int8.join("v3_e2e_ctc.int8.onnx"), b"int8").unwrap();
+        fs::write(int8.join("v3_e2e_ctc_vocab.txt"), b"vocab").unwrap();
+        fs::write(full.join("v3_e2e_ctc.onnx"), b"fp32").unwrap();
+        fs::write(full.join("v3_e2e_ctc_vocab.txt"), b"vocab").unwrap();
+        fs::write(full.join("v3_e2e_ctc.yaml"), b"unused").unwrap();
+
+        let migration = ModelManager::migrate_legacy_fork_gigaam_dirs(dir.path()).unwrap();
+
+        assert_eq!(
+            migration,
+            LegacyGigaamMigration {
+                int8_detected: true,
+                full_detected: true,
+            }
+        );
+        assert_eq!(
+            fs::read(dir.path().join("giga-am-v3-int8/model.int8.onnx")).unwrap(),
+            b"int8"
+        );
+        assert_eq!(
+            fs::read(dir.path().join("giga-am-v3-full/model.onnx")).unwrap(),
+            b"fp32"
+        );
+        assert!(!int8.exists());
+        assert!(!full.exists());
+    }
+
+    #[test]
+    fn test_migrate_legacy_gigaam_selection() {
+        let full_migration = LegacyGigaamMigration {
+            int8_detected: false,
+            full_detected: true,
+        };
+        assert_eq!(
+            ModelManager::migrate_legacy_gigaam_selection("gigaam-v3-e2e-ctc", &full_migration),
+            Some(GIGAAM_FULL_MODEL_ID.to_string())
+        );
+        assert_eq!(
+            ModelManager::migrate_legacy_gigaam_selection(
+                "gigaam-v3-e2e-ctc-int8",
+                &LegacyGigaamMigration::default()
+            ),
+            Some("gigaam-v3-e2e-ctc".to_string())
+        );
+        assert_eq!(
+            ModelManager::migrate_legacy_gigaam_selection(
+                "gigaam-v3-e2e-ctc",
+                &LegacyGigaamMigration::default()
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn test_migrate_legacy_gigaam_preserves_source_when_vocab_is_missing() {
+        let dir = TempDir::new().unwrap();
+        let full = dir.path().join("gigaam-v3-e2e-ctc");
+        fs::create_dir_all(&full).unwrap();
+        fs::write(full.join("v3_e2e_ctc.onnx"), b"fp32").unwrap();
+
+        let result = ModelManager::migrate_legacy_fork_gigaam_dirs(dir.path());
+
+        assert!(result.is_err());
+        assert!(full.exists());
+        assert!(full.join("v3_e2e_ctc.onnx").exists());
     }
 }

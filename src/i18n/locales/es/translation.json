@@ -81,6 +81,10 @@
         "name": "GigaAM v3",
         "description": "Reconocimiento de voz en ruso. Rápido y preciso."
       },
+      "gigaam-v3-e2e-ctc-full": {
+        "name": "GigaAM v3 (full)",
+        "description": "Russian speech recognition. Best quality, larger download."
+      },
       "canary-180m-flash": {
         "name": "Canary 180M Flash",
         "description": "Muy rápido. Inglés, alemán, español, francés. Soporta traducción."
