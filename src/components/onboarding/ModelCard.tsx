@@ -72,12 +72,12 @@ const ModelCard: React.FC<ModelCardProps> = ({
 }) => {
   const { t } = useTranslation();
   const isFeatured = variant === "featured";
-  const isClickable =
-    status === "available" || status === "active" || status === "downloadable";
-
   // Get translated model name and description
   const displayName = getTranslatedModelName(model, t);
   const displayDescription = getTranslatedModelDescription(model, t);
+  const canDownload = status === "downloadable" && Boolean(model.url);
+  const isClickable =
+    status === "available" || status === "active" || canDownload;
 
   const baseClasses =
     "flex flex-col rounded-xl px-4 py-3 gap-2 text-left transition-all duration-200";
@@ -93,14 +93,16 @@ const ModelCard: React.FC<ModelCardProps> = ({
   };
 
   const getInteractiveClasses = () => {
-    if (!isClickable) return "";
+    if (!isClickable || (status === "downloadable" && !canDownload)) return "";
     if (disabled) return "opacity-50 cursor-not-allowed";
     return "cursor-pointer hover:border-logo-primary/50 hover:bg-logo-primary/5 hover:shadow-lg hover:scale-[1.01] active:scale-[0.99] group";
   };
 
   const handleClick = () => {
-    if (!isClickable || disabled) return;
-    if (status === "downloadable" && onDownload) {
+    if (!isClickable || disabled || (status === "downloadable" && !canDownload)) {
+      return;
+    }
+    if (canDownload && onDownload) {
       onDownload(model.id);
     } else {
       onSelect(model.id);

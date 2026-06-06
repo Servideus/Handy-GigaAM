@@ -481,14 +481,12 @@ impl ModelManager {
             "gigaam-v3-e2e-ctc".to_string(),
             ModelInfo {
                 id: "gigaam-v3-e2e-ctc".to_string(),
-                name: "GigaAM v3".to_string(),
-                description: "Russian speech recognition. Fast and accurate.".to_string(),
-                filename: "giga-am-v3-int8".to_string(),
-                url: Some("https://blob.handy.computer/giga-am-v3-int8.tar.gz".to_string()),
-                sha256: Some(
-                    "d872462268430db140b69b72e0fc4b787b194c1dbe51b58de39444d55b6da45b".to_string(),
-                ),
-                size_mb: 151,
+                name: "GigaAM v3 e2e_ctc".to_string(),
+                description: "Russian GigaAM v3 E2E CTC model with punctuation.".to_string(),
+                filename: "gigaam-v3-e2e-ctc".to_string(),
+                url: None,
+                sha256: None,
+                size_mb: 845,
                 is_downloaded: false,
                 is_downloading: false,
                 partial_size: 0,
@@ -500,6 +498,34 @@ impl ModelManager {
                 is_recommended: false,
                 supported_languages: gigaam_languages,
                 supports_language_selection: false,
+                is_custom: false,
+            },
+        );
+
+        available_models.insert(
+            "whisper-large-v3-russian".to_string(),
+            ModelInfo {
+                id: "whisper-large-v3-russian".to_string(),
+                name: "Whisper Large V3 Russian".to_string(),
+                description: "Russian-optimized Whisper Large V3 model.".to_string(),
+                filename: "ggml-large-v3-russian-q5_0.bin".to_string(),
+                url: Some(
+                    "https://github.com/Servideus/Handy-GigaAM/releases/download/model-whisper-large-v3-russian-q5_0/ggml-large-v3-russian-q5_0.bin"
+                        .to_string(),
+                ),
+                sha256: None,
+                size_mb: 1031,
+                is_downloaded: false,
+                is_downloading: false,
+                partial_size: 0,
+                is_directory: false,
+                engine_type: EngineType::Whisper,
+                accuracy_score: 0.88,
+                speed_score: 0.30,
+                supports_translation: false,
+                is_recommended: true,
+                supported_languages: vec!["ru".to_string()],
+                supports_language_selection: true,
                 is_custom: false,
             },
         );
@@ -614,6 +640,10 @@ impl ModelManager {
         if let Err(e) = Self::discover_custom_whisper_models(&models_dir, &mut available_models) {
             warn!("Failed to discover custom models: {}", e);
         }
+
+        available_models.retain(|model_id, _| {
+            model_id == "whisper-large-v3-russian" || model_id == "gigaam-v3-e2e-ctc"
+        });
 
         let manager = Self {
             app_handle: app_handle.clone(),

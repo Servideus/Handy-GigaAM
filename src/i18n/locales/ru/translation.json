@@ -78,8 +78,12 @@
         "description": "Очень быстрая. Китайский, английский, японский, корейский, кантонский."
       },
       "gigaam-v3-e2e-ctc": {
-        "name": "GigaAM v3",
-        "description": "Распознавание русской речи. Быстро и точно."
+        "name": "GigaAM v3 e2e_ctc",
+        "description": "Русская модель GigaAM v3 E2E CTC с пунктуацией."
+      },
+      "whisper-large-v3-russian": {
+        "name": "Whisper Large V3 Russian",
+        "description": "Оптимизированная для русского языка модель Whisper Large V3."
       },
       "canary-180m-flash": {
         "name": "Canary 180M Flash",

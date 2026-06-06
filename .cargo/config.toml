@@ -1,1 +1,12 @@
 [build]
+# Короткий путь сборки в обход лимита длины пути Windows (MAX_PATH ~260).
+# Без этого вложенная сборка whisper.cpp/ggml-vulkan (vulkan-shaders-gen)
+# вылезает за лимит и падает. Артефакты сборки будут лежать в C:\ht.
+target-dir = "C:/ht"
+
+[env]
+# Whisper GPU на Windows (AMD/Intel/NVIDIA через Vulkan) собирается в whisper-rs-sys
+# только генератором Ninja: стандартный генератор "Visual Studio 17 2022" не может
+# собрать вложенный под-проект vulkan-shaders-gen (No CMAKE_C_COMPILER / VCEnd).
+# Требует, чтобы cl.exe и ninja.exe были в PATH -> собирать из Developer-консоли VS.
+CMAKE_GENERATOR = "Ninja"
