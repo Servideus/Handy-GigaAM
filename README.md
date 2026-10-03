@@ -1,3 +1,13 @@
+# Handy-GigaAM
+
+Experimental Handy build with GigaAM speech recognition and Windows/Vulkan build fixes.
+
+This repository started as my experimental integration of the Russian GigaAM speech-recognition model into [Handy](https://github.com/cjpais/Handy). GigaAM is now available upstream, so this repository is kept as a record of that experiment and additional Windows build fixes. It is an unofficial derivative of Handy, not a separate application developed from scratch.
+
+My [Windows build changes](https://github.com/Servideus/Handy-GigaAM/commit/922cfceff18f9f42026afbb0c47cfdfb671aa731) enable Whisper's Vulkan backend, use Ninja for nested CMake builds and a short target directory to avoid Windows path-length limits. The same commit includes local GigaAM model and UI changes.
+
+The original Handy README follows; its release links refer to the upstream project.
+
 # Handy
 
 [![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/WVBeWsNXK4)
