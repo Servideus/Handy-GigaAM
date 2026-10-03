@@ -8,6 +8,8 @@ My [Windows build changes](https://github.com/Servideus/Handy-GigaAM/commit/922c
 
 The original Handy README follows; its release links refer to the upstream project.
 
+See [contribution and verification notes](docs/GIGAAM_CONTRIBUTIONS.md) for the published Windows work, additional unpublished local experiments and current build limitations.
+
 # Handy
 
 [![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/WVBeWsNXK4)
