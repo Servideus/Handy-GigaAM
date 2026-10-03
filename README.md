@@ -1,3 +1,5 @@
+[Инструкция на русском языке здесь](README.ru.md).
+
 # Handy-GigaAM
 
 Experimental Handy build with GigaAM speech recognition and Windows/Vulkan build fixes.
@@ -6,7 +8,7 @@ This repository started as my experimental integration of the Russian GigaAM spe
 
 My [Windows build changes](https://github.com/Servideus/Handy-GigaAM/commit/922cfceff18f9f42026afbb0c47cfdfb671aa731) enable Whisper's Vulkan backend, use Ninja for nested CMake builds and a short target directory to avoid Windows path-length limits. The same commit includes local GigaAM model and UI changes.
 
-The original Handy README follows; its release links refer to the upstream project.
+The upstream user guide follows; its release links refer to the upstream project.
 
 See [contribution and verification notes](docs/GIGAAM_CONTRIBUTIONS.md) for the published Windows work, additional unpublished local experiments and current build limitations.
 
